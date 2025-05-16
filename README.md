@@ -13,7 +13,7 @@ This project demonstrates the deployment of a full-stack web application using A
 
 ---
 
-## 🛠️ Tools & Services Used (With Justification)
+## 🛠️ Tools & Services Used 
 
 ### 🧰 GitHub
 -  Source control and collaboration.
