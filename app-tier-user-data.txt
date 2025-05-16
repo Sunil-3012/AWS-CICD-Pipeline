@@ -1,0 +1,83 @@
+#!/bin/bash 
+# Update package list and install required packages 
+sudo yum update -y
+
+# Install Node.js
+curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash - 
+sudo yum install -y nodejs 
+
+# Install PM2 globally 
+sudo npm install -g pm2 
+
+# Define the log directory and ensure it exists 
+LOG_DIR="/var/log/react-node-mysql-app/backend" 
+mkdir -p $LOG_DIR 
+sudo chown -R root:root $LOG_DIR
+
+# Create the combined.log file
+sudo touch $LOG_DIR/combined.log
+sudo chown root:root $LOG_DIR/combined.log  # Set ownership to root
+
+# Create the error.log file
+sudo touch $LOG_DIR/error.log
+sudo chown root:root $LOG_DIR/error.log  # Set ownership to root
+
+# Ensure PM2 restarts on reboot as root
+sudo -u root pm2 startup systemd 
+sudo -u root pm2 save 
+
+# Install CloudWatch agent
+sudo yum install -y amazon-cloudwatch-agent
+
+# Create CloudWatch agent configuration
+sudo tee /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json > /dev/null <<EOL
+{
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/var/log/react-node-mysql-app/backend/combined.log",
+            "log_group_name": "node-app-logs-backend",
+            "log_stream_name": "{instance_id}-combined-log",
+            "timestamp_format": "%Y-%m-%d %H:%M:%S"
+          },
+          {
+            "file_path": "/var/log/react-node-mysql-app/backend/error.log",
+            "log_group_name": "node-app-logs-backend",
+            "log_stream_name": "{instance_id}-error-log",
+            "timestamp_format": "%Y-%m-%d %H:%M:%S"
+          },
+          {
+            "file_path": "/var/log/aws/codedeploy-agent/codedeploy-agent.log",
+            "log_group_name": "codedeploy-agent-logs-backend",
+            "log_stream_name": "{instance_id}-agent-log"
+          },
+          {
+            "file_path": "/opt/codedeploy-agent/deployment-root/deployment-logs/codedeploy-agent-deployments.log",
+            "log_group_name": "codedeploy-agent-logs-backend",
+            "log_stream_name": "{instance_id}-codedeploy-agent-deployment-log"
+          },
+          {
+            "file_path": "/tmp/codedeploy-agent.update.log",
+            "log_group_name": "codedeploy-agent-logs-backend",
+            "log_stream_name": "{instance_id}-codedeploy-agent-updater-log"
+          }
+        ]
+      }
+    }
+  }
+}
+EOL
+
+# Start CloudWatch agent
+sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+
+# Install code deploy agent
+sudo yum install ruby -y
+sudo yum install wget -y
+cd /home/ec2-user
+wget https://aws-codedeploy-us-east-1.s3.us-east-1.amazonaws.com/latest/install
+chmod +x ./install
+sudo ./install auto
+sudo systemctl start codedeploy-agent
